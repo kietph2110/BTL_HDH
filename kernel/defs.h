@@ -165,6 +165,7 @@ void            uvmunmap(pagetable_t, uint64, uint64, int);
 void            uvmclear(pagetable_t, uint64);
 pte_t *         walk(pagetable_t, uint64, int);
 uint64          walkaddr(pagetable_t, uint64);
+uint64          futex_key(pagetable_t pagetable, uint64 va);
 int             copyout(pagetable_t, uint64, uint64, char *, uint64);
 int             copyin(pagetable_t, uint64, char *, uint64, uint64);
 int             copyinstr(pagetable_t, uint64, char *, uint64, uint64);
