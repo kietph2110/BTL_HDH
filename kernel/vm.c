@@ -167,7 +167,6 @@ futex_key(pagetable_t pagetable, uint64 va)
   return PTE2PA(*pte) + (va & (PGSIZE - 1));
 }
 
-
 // Create PTEs for virtual addresses starting at va that refer to
 // physical addresses starting at pa.
 // va and size MUST be page-aligned.
