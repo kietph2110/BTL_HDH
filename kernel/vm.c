@@ -138,7 +138,6 @@ walkaddr(pagetable_t pagetable, uint64 va)
   return pa;
 }
 
-
 /*
  * Convert a user virtual address to a physical futex key.
  * Return 0 if the address is invalid.
