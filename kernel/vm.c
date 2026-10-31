@@ -138,6 +138,37 @@ walkaddr(pagetable_t pagetable, uint64 va)
   return pa;
 }
 
+
+/*
+ * Convert a user virtual address to a physical futex key.
+ * Return 0 if the address is invalid.
+ */
+uint64
+futex_key(pagetable_t pagetable, uint64 va)
+{
+  pte_t *pte;
+
+  // A futex word must be aligned to 4 bytes.
+  // The virtual address must be within the valid range.
+  if ((va % 4) != 0 || va >= MAXVA)
+    return 0;
+
+  // Look up the page table entry without allocating memory.
+  pte = walk(pagetable, va, 0);
+
+  // The virtual address has no page table entry.
+  if (pte == 0)
+    return 0;
+
+  // The page must be valid and accessible from user space.
+  if ((*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
+    return 0;
+
+  // Physical page base + offset within the page.
+  return PTE2PA(*pte) + (va & (PGSIZE - 1));
+}
+
+
 // Create PTEs for virtual addresses starting at va that refer to
 // physical addresses starting at pa.
 // va and size MUST be page-aligned.
