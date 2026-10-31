@@ -21,3 +21,7 @@
 #define SYS_mkdir  20
 #define SYS_close  21
 #define SYS_sync   22
+
+// futex
+#define SYS_futex_wait 23
+#define SYS_futex_wake 24

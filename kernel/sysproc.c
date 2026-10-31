@@ -110,3 +110,31 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+// Not implemented yet: only validates addr for now.
+uint64
+sys_futex_wait(void)
+{
+  uint64 addr;
+  int val;
+
+  argaddr(0, &addr);
+  argint(1, &val);
+  if (futex_key(myproc()->pagetable, addr) == 0)
+    return -1;
+  return 0;
+}
+
+// Not implemented yet: only validates addr and n for now.
+uint64
+sys_futex_wake(void)
+{
+  uint64 addr;
+  int n;
+
+  argaddr(0, &addr);
+  argint(1, &n);
+  if (n <= 0 || futex_key(myproc()->pagetable, addr) == 0)
+    return -1;
+  return 0;
+}
