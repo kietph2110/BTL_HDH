@@ -69,10 +69,35 @@ Nhóm thêm ba system call; `futex_wait` và `futex_wake` (số 23, 24) đã có
 
 ## 4. Bộ nhớ dùng chung (Kiên)
 
-- `shmalloc(npages)`: cấp trang, ánh xạ với `PTE_SH`.
-- `uvmcopy()`: trang có `PTE_SH` được ánh xạ lại cùng PA sang con và tăng `refcnt`.
-- `kalloc()` đặt `refcnt = 1`; `kfree()` giảm và chỉ giải phóng khi về 0; `freerange()` lúc khởi động phải đặt `refcnt = 1` trước khi gọi `kfree()`.
-- Tham khảo: [`docs/memory-design/`](../memory-design/).
+Futex chỉ có tác dụng giữa các tiến trình khi chúng cùng nhìn thấy một biến. xv6 gốc không có bộ nhớ dùng chung: `fork()` gọi `uvmcopy()` sao chép mọi trang của cha. Nhóm thêm trang nhớ ẩn danh dùng chung và bộ đếm tham chiếu để trang chỉ được giải phóng khi không còn tiến trình nào dùng.
+
+**`shmalloc(npages)`.**
+
+- Cấp `npages` trang mới bằng `kalloc()`, xóa về 0, ánh xạ liên tiếp từ `va = PGROUNDUP(p->sz)` với cờ `PTE_R | PTE_W | PTE_U | PTE_SH`, sau đó cập nhật `p->sz = va + npages * PGSIZE` và trả về `va`.
+- Vùng chung nằm ngay trên heap và nằm trong `p->sz`, nên `exit()`, `exec()` và `sbrk` âm tự thu hồi nó qua `uvmunmap()` như bộ nhớ thường, không cần sửa thêm.
+- Trang được cấp ngay, không đi qua cấp phát lười `vmfault()`, để PTE đã tồn tại trước khi `fork()`; nếu không, `uvmcopy()` sẽ bỏ qua trang và con không thấy vùng chung.
+- Lỗi (`npages <= 0`, `npages > 16` hoặc hết bộ nhớ): gỡ các trang đã cấp bằng `uvmunmap()` và trả về 0.
+
+**Cờ `PTE_SH` = bit 8.** PTE của Sv39 dành bit 8–9 (RSW) cho phần mềm, phần cứng bỏ qua nên việc đánh dấu không ảnh hưởng dịch địa chỉ. Bit 0–4 (V, R, W, X, U) đã dùng, bit 5–7 (G, A, D) có ý nghĩa với phần cứng. `PTE_FLAGS()` lấy 10 bit thấp (`0x3FF`) nên `PTE_SH` được giữ nguyên khi chép cờ sang bảng trang con.
+
+**Những gì phải sửa.**
+
+| Vị trí | Thay đổi |
+| --- | --- |
+| `kernel/kalloc.c` | Thêm `int refcnt[(PHYSTOP - KERNBASE) / PGSIZE]` (32 768 ô, 128 KB) với khóa riêng `kref.lock`; chỉ số của trang là `(pa - KERNBASE) / PGSIZE` |
+| `kalloc()` | Trang lấy từ freelist phải có `refcnt = 0`, đặt thành 1 |
+| `kfree()` | Giảm `refcnt`; chỉ đưa trang về freelist khi về 0. Nếu `refcnt <= 0` trước khi giảm thì `panic("kfree: double free")` |
+| `freerange()` | Đặt `refcnt = 1` trước khi gọi `kfree()` cho từng trang lúc khởi động; nếu không, `kfree()` thấy 0 và panic ngay khi boot |
+| `uvmcopy()` | PTE có `PTE_SH`: `mappages()` cùng PA sang bảng trang con và gọi `kref_inc(pa)`, thay vì `kalloc()` + `memmove()` |
+| `uvmunmap()` | Không sửa: vẫn gọi `kfree()`, bộ đếm quyết định trang có bị giải phóng hay không |
+
+Thêm `kref_inc()` và `kref_get()` vào `kernel/defs.h`. `kalloc()` và `kfree()` không bao giờ giữ `kref.lock` và `kmem.lock` cùng lúc nên không có deadlock.
+
+**Ví dụ.** Cha gọi `shmalloc(1)` rồi `fork()`: trang chung có `refcnt = 2`, `futex_key()` của cha và con trả về cùng địa chỉ vật lý. Con thoát trước: `refcnt` về 1, cha vẫn đọc được giá trị con ghi. Cha thoát sau: `refcnt` về 0, trang mới trở lại freelist.
+
+![Luồng xử lý trang chung khi fork() và exit()](../memory-design/so_do/3_luong_fork_exit.svg)
+
+**Lộ trình.** Tuần 3: `refcnt[]` trong `kalloc.c`, `usertests` vẫn PASS. Tuần 4: `PTE_SH`, `sys_shmalloc()`, sửa `uvmcopy()` và chương trình test cha–con dùng chung trang.
 
 ## 5. Thư viện tầng user (Lâm)
 
